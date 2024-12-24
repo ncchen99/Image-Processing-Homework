@@ -228,9 +228,9 @@ class MainWindow(QMainWindow):
 
     def show_acc_loss(self):
         # 顯示準確度和損失的圖表
-        if os.path.exists("C://Users//ncc//Downloads//image_HW2//ui//accuracy.png") and os.path.exists("C://Users//ncc//Downloads//image_HW2//ui//loss.png"):
-            acc_img = QPixmap("C://Users//ncc//Downloads//image_HW2//ui//accuracy.png")
-            loss_img = QPixmap("C://Users//ncc//Downloads//image_HW2//ui//loss.png")
+        if os.path.exists("ui//accuracy.png") and os.path.exists("ui//loss.png"):
+            acc_img = QPixmap("ui//accuracy.png")
+            loss_img = QPixmap("ui//loss.png")
             self.display_label_1.setPixmap(acc_img)
             self.display_label_2.setPixmap(loss_img)
         else:
