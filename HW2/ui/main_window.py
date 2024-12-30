@@ -16,6 +16,9 @@ import cv2
 import torchvision.transforms as transforms
 from torchvision import datasets
 from torch.utils.data import DataLoader
+import matplotlib
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+import matplotlib.font_manager as fm
 
 
 class MainWindow(QMainWindow):
@@ -301,7 +304,7 @@ class MainWindow(QMainWindow):
             self.display_label_1.setPixmap(QPixmap.fromImage(q_image))
 
     def load_video(self):
-        # 在這裡添加加載���頻的邏輯
+        # 在這裡添加加載影片的邏輯
         pass 
 
     def q2_load_image(self):
@@ -348,7 +351,7 @@ class MainWindow(QMainWindow):
         from PyQt5.QtGui import QPixmap
         
         # 檢查圖像路徑是否存在
-        comparison_image_path = "C:/Users/ncc/Downloads/image_HW2/com.png"
+        comparison_image_path = "com.png"
         if not os.path.exists(comparison_image_path):
             QMessageBox.warning(self, "Warning", "比較圖表未找到。")
             return
@@ -439,14 +442,32 @@ class MainWindow(QMainWindow):
 
     def inference_vgg16(self):
         """
-        使用 VGG16 模型進行圖片預測，並以小視窗彈出結果。
+        使用 VGG16 模型進行圖片預測，並在同一視窗顯示預測類別及各類別機率值直方圖。
         """
-        from PyQt5.QtWidgets import QFileDialog, QMessageBox
+        from PyQt5.QtWidgets import QFileDialog, QMessageBox, QDialog, QVBoxLayout, QLabel
         from PyQt5.QtGui import QImage, QPixmap
         from torchvision import transforms
         from PIL import Image
         import torch
-        
+        import matplotlib.pyplot as plt
+        import matplotlib.font_manager as fm
+        from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+        import os
+
+        # 設定 matplotlib 支援中文
+        font_path = os.path.join('ui', 'HanyiSentyPagoda Regular.ttf')
+        if os.path.exists(font_path):
+            font_prop = fm.FontProperties(fname=font_path)
+            plt.rcParams['font.family'] = font_prop.get_name()
+        else:
+            QMessageBox.warning(
+                self,
+                "警告",
+                f"指定的字體檔案未找到: {font_path}\n將使用預設字體。"
+            )
+
+        plt.rcParams['axes.unicode_minus'] = False  # 正常顯示負號
+
         # 選擇圖片檔案
         options = QFileDialog.Options()
         file_name, _ = QFileDialog.getOpenFileName(
@@ -456,45 +477,76 @@ class MainWindow(QMainWindow):
             "Images (*.png *.jpg *.jpeg *.bmp);;All Files (*)",
             options=options
         )
-        
+
         if file_name:
             try:
                 # 使用 PIL 讀取圖片並轉為灰階
                 image = Image.open(file_name).convert("L")
-                
+
                 # 定義預處理轉換
                 preprocess = transforms.Compose([
                     transforms.Resize((32, 32)),
                     transforms.ToTensor(),
                     transforms.Normalize((0.1307,), (0.3081,))
                 ])
-                
+
                 input_tensor = preprocess(image)
                 input_batch = input_tensor.unsqueeze(0)  # 增加 batch 維度
-                
+
                 # 設置設備
                 device = self.device
                 self.model_vgg16.to(device)
                 self.model_vgg16.eval()
-                
+
                 # 預測
                 with torch.no_grad():
                     input_batch = input_batch.to(device)
                     output = self.model_vgg16(input_batch)
+                    probabilities = torch.nn.functional.softmax(output, dim=1)
                     _, predicted = torch.max(output, 1)
-                
-                # 顯示預測結果於小視窗彈出
+
+                # 取得預測結果
                 class_idx = predicted.item()
                 class_name = self.mnist_class_names[class_idx]
-                
-                QMessageBox.information(
-                    self,
-                    "預測結果",
-                    f"預測類別: {class_name}"
-                )
-                
-                # 顯示圖片
-                # 將圖片轉換為可顯示格式，轉回灰階
+                probability_values = probabilities.cpu().numpy()[0]
+
+                # 創建 QDialog 來顯示預測結果和直方圖
+                dialog = QDialog(self)
+                dialog.setWindowTitle("預測結果及機率分布")
+                dialog.setGeometry(150, 150, 800, 600)
+
+                layout = QVBoxLayout()
+
+                # 預測類別標籤
+                label = QLabel(f"預測類別: {class_name}")
+                label.setAlignment(Qt.AlignCenter)
+                layout.addWidget(label)
+
+                # 創建 Matplotlib 圖表並嵌入到 FigureCanvas
+                fig, ax = plt.subplots(figsize=(10, 4))
+                bars = ax.bar(range(len(probability_values)), probability_values, color='skyblue')
+                ax.set_xlabel('類別')
+                ax.set_ylabel('機率')
+                ax.set_title(f'預測類別: {class_name} 的機率分布')
+                ax.set_xticks(range(len(probability_values)))
+                ax.set_xticklabels(self.mnist_class_names, rotation=45)
+                ax.set_ylim([0, 1])
+
+                # 在條形上顯示機率值
+                for bar, prob in zip(bars, probability_values):
+                    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
+                            f'{prob:.2%}', ha='center', va='bottom', fontsize=9)
+
+                plt.tight_layout()
+
+                # 嵌入圖表到 PyQt5
+                canvas = FigureCanvas(fig)
+                layout.addWidget(canvas)
+
+                dialog.setLayout(layout)
+                dialog.exec_()
+
+                # 顯示圖片於 QLabel
                 display_image = image.resize((400, 400))
                 display_image = display_image.convert("L")  # 保持灰階
                 q_image = QImage(display_image.tobytes("raw", "L"),
@@ -502,6 +554,6 @@ class MainWindow(QMainWindow):
                                  display_image.size[1],
                                  QImage.Format_Grayscale8)
                 self.display_label_1.setPixmap(QPixmap.fromImage(q_image))
-                
+
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"預測失敗: {e}")
